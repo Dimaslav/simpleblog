@@ -1,0 +1,33 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: organization
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: "host=postgres user=postgres password=postgres dbname=organization port=5432 sslmode=disable"
+      PORT: "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/root/migrations
+
+volumes:
+  postgres_data:
