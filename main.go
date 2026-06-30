@@ -15,19 +15,35 @@ import (
 )
 
 func main() {
-	// Подключение к БД
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		dsn = "host=postgres user=postgres password=postgres dbname=organization port=5432 sslmode=disable TimeZone=UTC"
 	}
+
 	sqlDB, err := sql.Open("pgx", dsn)
 	if err != nil {
-		log.Fatal("failed to connect to database:", err)
+		log.Fatal("failed to open database:", err)
 	}
 	defer sqlDB.Close()
 
-	// Миграции
-	if err := goose.Up(sqlDB, "migrations"); err != nil {
+	if err := sqlDB.Ping(); err != nil {
+		log.Fatal("failed to ping database:", err)
+	}
+
+	// goose
+	goose.SetDialect("postgres")
+
+	migrationsDir := os.Getenv("MIGRATIONS_DIR")
+	if migrationsDir == "" {
+		migrationsDir = "migrations"
+		if _, err := os.Stat(migrationsDir); err != nil {
+			if _, fallbackErr := os.Stat("/root/migrations"); fallbackErr == nil {
+				migrationsDir = "/root/migrations"
+			}
+		}
+	}
+
+	if err := goose.Up(sqlDB, migrationsDir); err != nil {
 		log.Fatal("failed to run migrations:", err)
 	}
 
@@ -47,17 +63,19 @@ func main() {
 	mux.HandleFunc("PATCH /departments/{id}", updateDepartment(gormDB))
 	mux.HandleFunc("DELETE /departments/{id}", deleteDepartment(gormDB))
 
-	// Запуск сервера
+	// Сервер
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
+
 	srv := &http.Server{
 		Addr:         ":" + port,
 		Handler:      mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
+
 	log.Printf("server starting on port %s", port)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
